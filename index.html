@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Chosen Palette: Calm Harmony (Warm Neutrals with a Professional Blue Accent) -->
+    <!-- Application Structure Plan: The SPA is designed as an interactive dashboard, not a linear report. The core is the "Scholarship Explorer," a filterable grid of scholarship cards. This structure was chosen because the primary user task is not to read a report from top to bottom, but to find specific opportunities relevant to their situation (e.g., "all leadership scholarships in Canada"). Filters for Country, Focus, and Coverage directly map to the key analytical dimensions of the source report, making the data explorable and actionable. This user-driven approach is far more effective for synthesizing this type of information than a static page. The flow is: 1) Understand high-level context via summary cards. 2) Interactively explore data via filters. 3) Find strategic guidance and resources. -->
+    <!-- Visualization & Content Choices: The main "visualization" is the interactive grid itself, which is more powerful than a static chart for this dataset. Report Info: Scholarship Focus Types -> Goal: Compare -> Viz/Presentation Method: An interactive donut chart (Chart.js) is used to give a high-level overview of the types of scholarships available globally. This provides initial context before the user drills down with filters. Report Info: Application Steps -> Goal: Organize -> Viz/Presentation Method: A styled HTML/CSS diagram is used to present the application process clearly. This is more integrated and stylistically flexible than a static image. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <title>Interactive Scholarship Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .chart-container { position: relative; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto; height: 350px; max-height: 400px; }
+        .filter-btn { transition: all 0.2s ease-in-out; }
+        .filter-btn.active { background-color: #0284c7; color: white; }
+        .filter-btn:not(.active):hover { background-color: #e2e8f0; }
+        .scholarship-card { transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; border: 1px solid #e2e8f0; }
+        .scholarship-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.open .modal-content {
+            transform: translateY(0);
+        }
+        .close-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #64748b;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0284c7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .chat-message {
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            max-width: 85%;
+            word-wrap: break-word; /* Ensure long words break */
+        }
+        .chat-message.user {
+            background-color: #e0f2fe;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .chat-message.ai {
+            background-color: #f0f4f8;
+            align-self: flex-start;
+            margin-right: auto;
+        }
+    </style>
+</head>
+<body class="text-slate-700">
+
+    <header class="bg-white">
+        <div class="container mx-auto px-6 py-12 text-center">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900">Interactive Scholarship Explorer</h1>
+            <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">Finding a full-ride scholarship is a challenge. This tool transforms a comprehensive report into a dynamic explorer, helping you filter and find opportunities that match your profile and ambitions.</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+        
+        <section id="key-takeaways" class="mb-12">
+             <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">The Global Landscape at a Glance</h2>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">Before you dive in, understand the key themes from our research. Securing a full-ride is about strategy, not just luck.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h3 class="font-bold text-sky-700 text-lg mb-2">University vs. Government</h3>
+                    <p class="text-sm">In the US, the best opportunities are often from universities. In countries like Australia or Japan, government programs lead the way.</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h3 class="font-bold text-sky-700 text-lg mb-2">It's Highly Competitive</h3>
+                    <p class="text-sm">True full-ride scholarships are rare. Many are reserved for graduate students, making the undergraduate pool small and sought-after.</p>
+                </div>
+                 <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h3 class="font-bold text-sky-700 text-lg mb-2">Focus Matters</h3>
+                    <p class="text-sm">Scholarships have strategic goals: attracting elite talent, fostering development in specific countries, or promoting cultural exchange.</p>
+                </div>
+                 <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h3 class="font-bold text-sky-700 text-lg mb-2">Go Beyond Academics</h3>
+                    <p class="text-sm">Top awards look for leadership, community service, and a clear vision. A holistic profile is essential for success.</p>
+                </div>
+            </div>
+        </section>
+
+
+        <section id="explorer" class="bg-white p-6 md:p-8 rounded-lg shadow-lg">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div class="lg:col-span-3">
+                    <h3 class="text-xl font-bold text-slate-800 mb-4">Filter Opportunities</h3>
+                    
+                    <div class="mb-6">
+                        <label class="font-semibold text-slate-600 block mb-2">By Country</label>
+                        <div id="country-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="font-semibold text-slate-600 block mb-2">By Focus</label>
+                        <div id="focus-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+                     <div class="mb-6">
+                        <label class="font-semibold text-slate-600 block mb-2">By Coverage</label>
+                        <div id="coverage-filters" class="flex flex-wrap gap-2"></div>
+                    </div>
+                     <div>
+                        <button id="reset-filters" class="w-full text-center py-2 px-4 rounded-md bg-slate-200 text-slate-700 hover:bg-slate-300 transition">Reset All Filters</button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-9">
+                    <div class="flex justify-between items-center mb-4">
+                         <h3 class="text-xl font-bold text-slate-800">Available Scholarships</h3>
+                         <p id="results-count" class="text-slate-500 font-medium"></p>
+                    </div>
+                    <div id="scholarship-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <p id="no-results" class="hidden md:col-span-2 xl:col-span-3 text-center py-12 text-slate-500">No scholarships match the selected filters. Try removing a filter to broaden your search.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="analysis" class="mt-12">
+             <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Global Funding Focus</h2>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">This chart shows the distribution of primary focus areas among the listed scholarships, highlighting the prevalence of merit and need-based awards.</p>
+            </div>
+            <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg">
+                 <div class="chart-container">
+                    <canvas id="focus-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section id="strategy" class="mt-12">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-slate-800">Your Path to Success</h2>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">Securing a full-ride is a marathon. Follow this strategic four-step process to maximize your chances.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-8">
+                <div class="text-center px-4">
+                    <div class="mx-auto w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-2xl font-bold text-sky-700 mb-4">1</div>
+                    <h3 class="font-bold text-lg text-slate-800">Research & Identify</h3>
+                    <p class="text-slate-600 mt-1">Use global databases to create a master list of scholarships with their specific deadlines and requirements.</p>
+                </div>
+                <div class="text-center px-4">
+                    <div class="mx-auto w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-2xl font-bold text-sky-700 mb-4">2</div>
+                    <h3 class="font-bold text-lg text-slate-800">Build Your Profile</h3>
+                    <p class="text-slate-600 mt-1">Excel academically while building a strong portfolio of leadership roles and meaningful community service.</p>
+                </div>
+                <div class="text-center px-4">
+                    <div class="mx-auto w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-2xl font-bold text-sky-700 mb-4">3</div>
+                    <h3 class="font-bold text-lg text-slate-800">Tailor Applications</h3>
+                    <p class="text-slate-600 mt-1">Customize essays to match each scholarship's specific focus, whether it's leadership, social impact, or academic merit.</p>
+                </div>
+                <div class="text-center px-4">
+                    <div class="mx-auto w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-2xl font-bold text-sky-700 mb-4">4</div>
+                    <h3 class="font-bold text-lg text-slate-800">Apply & Persist</h3>
+                    <p class="text-slate-600 mt-1">Apply to multiple opportunities. The process is long and highly competitive, so persistence is key.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="study-mentor-section" class="mt-12 bg-white p-6 md:p-8 rounded-lg shadow-lg">
+            <h4 class="text-xl font-bold text-slate-800 mb-3">📚 AI Study Mentor</h4>
+            <p class="text-sm text-slate-600 mb-3">Ask me anything about study habits, time management, motivation, or academic planning!</p>
+            <div id="study-mentor-chat-history" class="bg-slate-50 p-3 rounded-md mb-3 h-64 overflow-y-auto flex flex-col space-y-2"></div>
+            <textarea id="study-mentor-input" class="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" rows="2" placeholder="e.g., How can I improve my focus during long study sessions?"></textarea>
+            <button id="ask-study-mentor-btn" class="mt-3 w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition">Ask Mentor</button>
+            <button id="start-new-conversation-btn" class="mt-3 w-full bg-slate-400 text-white py-2 rounded-md hover:bg-slate-500 transition">Start New Conversation</button>
+            <div id="study-mentor-spinner" class="spinner hidden"></div>
+            <p id="study-mentor-error" class="text-red-500 mt-4 hidden">Failed to get a response from the mentor. Please try again.</p>
+        </section>
+
+    </main>
+    
+    <footer class="mt-12 border-t border-slate-200">
+        <div class="container mx-auto px-6 py-8 text-center text-slate-500">
+             <p>This interactive tool is based on the 'Comprehensive Guide to Full-Ride Undergraduate Scholarships for International Students Worldwide' report. It is for informational purposes only. Always consult official scholarship websites for the most current information and application procedures.</p>
+        </div>
+    </footer>
+
+    <div id="tips-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-button" id="close-modal">&times;</button>
+            <h3 class="text-2xl font-bold text-slate-800 mb-4" id="modal-title">Application Tips</h3>
+            <div id="modal-spinner" class="spinner hidden"></div>
+            <div id="modal-tips-content" class="text-slate-700 prose max-w-none"></div>
+            <p id="modal-error" class="text-red-500 mt-4 hidden">Failed to load tips. Please try again.</p>
+
+            <div class="mt-8 pt-6 border-t border-slate-200">
+                <h4 class="text-xl font-bold text-slate-800 mb-3">✨ Brainstorm Essay Ideas</h4>
+                <p class="text-sm text-slate-600 mb-3">Enter a brief idea or achievement you want to highlight in your essay, and I'll suggest some angles.</p>
+                <textarea id="essay-idea-input" class="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" rows="3" placeholder="e.g., My community service project helping local schools..."></textarea>
+                <button id="generate-essay-ideas-btn" class="mt-3 w-full bg-sky-600 text-white py-2 rounded-md hover:bg-sky-700 transition">✨ Generate Ideas</button>
+                <div id="essay-ideas-spinner" class="spinner hidden"></div>
+                <div id="essay-ideas-content" class="text-slate-700 prose max-w-none mt-4"></div>
+                <p id="essay-ideas-error" class="text-red-500 mt-4 hidden">Failed to generate essay ideas. Please try again.</p>
+            </div>
+
+            <div class="mt-8 pt-6 border-t border-slate-200">
+                <h4 class="text-xl font-bold text-slate-800 mb-3">✨ Personal Statement Feedback</h4>
+                <p class="text-sm text-slate-600 mb-3">Paste your personal statement below to get AI-powered feedback on its clarity, relevance, and areas for improvement. Max 1000 words.</p>
+                <textarea id="personal-statement-input" class="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" rows="8" placeholder="Paste your personal statement here..."></textarea>
+                <button id="get-statement-feedback-btn" class="mt-3 w-full bg-emerald-600 text-white py-2 rounded-md hover:bg-emerald-700 transition">✨ Get Feedback</button>
+                <div id="statement-feedback-spinner" class="spinner hidden"></div>
+                <div id="statement-feedback-content" class="text-slate-700 prose max-w-none mt-4"></div>
+                <p id="statement-feedback-error" class="text-red-500 mt-4 hidden">Failed to get feedback. Please try again.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const scholarships = [
+            { name: 'Berea College Scholarships', country: 'USA', focus: ['Need-Based'], coverage: 'Full Ride', shortSummary: '100% funding for the first year, covering tuition, housing, food, and fees for all enrolled international students.', longDescription: 'Berea College is unique in that it provides 100% funding for the first year of enrollment for all international students, covering tuition, housing, food, and fees. In subsequent years, students are expected to save a portion of their earnings from campus jobs to contribute towards their expenses. This scholarship is primarily need-based, focusing on students who demonstrate significant financial need and a commitment to service.' },
+            { name: 'Yale University Scholarships', country: 'USA', focus: ['Need-Based'], coverage: 'Full Ride', shortSummary: 'Need-based aid covering up to full tuition, room, and board, especially for families with lower incomes.', longDescription: 'Yale University offers need-based financial aid to all admitted students, regardless of citizenship. Their scholarships are designed to meet 100% of demonstrated financial need, covering tuition, room, and board. The aid package may include a Yale Scholarship (grant), a student share (from summer work), and a student loan. Emphasis is on academic excellence and a diverse student body.' },
+            { name: 'Clark Global Scholarship', country: 'USA', focus: ['Merit-Based'], coverage: 'Partial', shortSummary: '$15,000 to $25,000 per year for four years, contingent on academic standing.', longDescription: 'The Clark Global Scholarship Program is open to international students who have demonstrated strong academic achievement and leadership potential. While not a full-ride, it offers substantial merit-based awards ranging from $15,000 to $25,000 annually for four years, contingent on maintaining academic standing. Applicants should highlight their extracurricular involvement and academic rigor.' },
+            { name: 'Clark University Presidential Scholarship', country: 'USA', focus: ['Merit-Based'], coverage: 'Full Ride', shortSummary: 'Covers full tuition, on-campus housing, and meals for all four years.', longDescription: 'The Clark University Presidential Scholarship is a highly competitive, full-ride scholarship covering tuition, on-campus housing, and meals for all four years. It is awarded to a select number of international students who demonstrate exceptional academic achievement, leadership, and a commitment to making a positive impact. A strong essay and recommendations are crucial.' },
+            { name: 'Illinois Wesleyan President\'s Scholarships', country: 'USA', focus: ['Merit-Based'], coverage: 'Full Tuition', shortSummary: 'Full-tuition scholarships for two highly qualified first-year international students.', longDescription: 'Illinois Wesleyan University offers full-tuition scholarships to two highly qualified first-year international students each year. These are merit-based awards, focusing on academic excellence, leadership skills, and extracurricular involvement. Applicants should showcase their intellectual curiosity and potential contributions to the university community.' },
+            { name: 'Onsi Sawiris Scholarship', country: 'USA', focus: ['Merit-Based'], coverage: 'Full Ride', shortSummary: 'Covers full tuition, living allowance, travel, and health insurance at select top-tier universities.', longDescription: 'The Onsi Sawiris Scholarship Program is a fully funded scholarship for Egyptian students to pursue undergraduate and graduate degrees at prestigious universities in the U.S. It covers full tuition, living allowance, travel, and health insurance. Selection is based on academic excellence, extracurricular activities, and leadership potential. Strong English language skills are essential.' },
+            { name: 'Reach Oxford Scholarship', country: 'UK', focus: ['Development-Focused', 'Need-Based'], coverage: 'Full Ride', shortSummary: 'For students from low-income countries, covering tuition, living expenses, and airfare.', longDescription: 'The Reach Oxford Scholarship is specifically for undergraduate students from low-income countries who, for political or financial reasons, or because equivalent educational facilities do not exist, cannot study for a degree in their own country. It covers university fees, college fees, and a grant for living costs and annual airfare. Applicants must demonstrate exceptional academic merit and significant financial need.' },
+            { name: 'UCL Global Undergraduate Scholarships', country: 'UK', focus: ['Need-Based'], coverage: 'Full Ride', shortSummary: 'For international students with demonstrated financial need, covering full tuition and a living stipend.', longDescription: 'UCL offers Global Undergraduate Scholarships to international students from lower-income backgrounds who would be unable to study at UCL without financial assistance. The scholarship covers full tuition fees and a maintenance allowance for living costs. Applicants must demonstrate financial need and meet UCL\'s academic entry requirements.' },
+            { name: 'Lester B. Pearson International Scholarships', country: 'Canada', focus: ['Leadership', 'Merit-Based'], coverage: 'Full Ride', shortSummary: 'Covers tuition, books, incidental fees, and full residence support for four years at the University of Toronto.', longDescription: 'The Lester B. Pearson International Scholarships at the University of Toronto are awarded to outstanding international students who demonstrate exceptional academic achievement and creativity, and who are recognized as leaders within their school. This full-ride scholarship covers tuition, books, incidental fees, and full residence support for four years. Emphasis is placed on impact within the community and future leadership potential.' },
+            { name: 'UBC International Scholars Program', country: 'Canada', focus: ['Leadership', 'Merit-Based'], coverage: 'Full Ride', shortSummary: 'Full scholarship for students with superior academics and exceptional leadership at UBC.', longDescription: 'The University of British Columbia\'s International Scholars Program provides full scholarships to international students who demonstrate superior academic achievement, leadership skills, and strong extracurricular involvement. These scholarships are highly competitive and aim to attract students who will contribute significantly to the UBC community and beyond.' },
+            { name: 'SBW Berlin Scholarship', country: 'Germany', focus: ['Social Commitment'], coverage: 'Full Ride', shortSummary: 'Funds degrees in Berlin/Potsdam, requires social commitment and intent to work in home country post-graduation.', longDescription: 'The SBW Berlin Scholarship supports young people from abroad who are committed to social causes and have already demonstrated this commitment through their voluntary work. It funds undergraduate degrees in Berlin or Potsdam. A key requirement is the intention to return to their home country after graduation to apply their acquired knowledge and skills for the benefit of their community.' },
+            { name: 'Australia Awards Scholarships (AAS)', country: 'Australia', focus: ['Development-Focused'], coverage: 'Full Ride', shortSummary: 'For students from developing countries to contribute to their nation\'s development after graduation.', longDescription: 'Australia Awards Scholarships are long-term development awards administered by the Department of Foreign Affairs and Trade. They aim to promote knowledge, education links, and enduring ties between Australia and its partner countries. The scholarships are for students from developing countries to undertake full-time undergraduate or postgraduate study in Australia, with the expectation that they will return home to contribute to their country\'s development.' },
+            { name: 'Japanese Government (MEXT) Scholarship', country: 'Japan', focus: ['Language & Culture'], coverage: 'Full Ride', shortSummary: 'Requires willingness to learn Japanese and study in Japanese; includes preparatory language year.', longDescription: 'The MEXT Scholarship is a highly prestigious government scholarship for international students wishing to study in Japan. For undergraduate degrees, it provides airfare to Japan, tuition for the university, and a stipend for cost of living. It is open to high school seniors or recent graduates who intend to earn an undergraduate degree, typically a five-year program including one year of intensive Japanese study. A key eligibility criterion is the applicant\'s willingness to learn Japanese, deepen their understanding of Japan, and carry out their academic studies in Japan in Japanese.' },
+            { name: 'Chinese Government Scholarship (CSC)', country: 'China', focus: ['Language & Culture'], coverage: 'Full Ride', shortSummary: 'Requires study in Chinese, often including 1-2 years of college preparatory courses.', longDescription: 'The Chinese Government Scholarship (CSC) is a comprehensive scholarship offered to international students to study in China. For undergraduate programs, it typically requires students to undertake 1-2 years of Chinese language study before commencing their degree. Applicants should highlight their academic achievements and their willingness to immerse themselves in Chinese language and culture.' },
+            { name: 'Shanghai Government Scholarship', country: 'China', focus: ['Language & Culture'], coverage: 'Full Ride', shortSummary: 'Comprehensive scholarship with a likely requirement for study in Chinese.', longDescription: 'The Shanghai Government Scholarship is offered to outstanding international students to study in Shanghai. It is a comprehensive scholarship covering tuition, accommodation, and living expenses. Similar to the CSC scholarship, undergraduate programs often require a commitment to learning Chinese and may include a preparatory language year.' },
+            { name: 'Global Korea Scholarship (GKS)', country: 'South Korea', focus: ['Merit-Based'], coverage: 'Full Ride', shortSummary: 'Prestigious government scholarship covering full tuition, allowance, and airfare for all degree levels.', longDescription: 'The Global Korea Scholarship (GKS) is a highly competitive scholarship offered by the Korean government to international students. It covers full tuition, a monthly living allowance, airfare, and medical insurance. Selection is based on academic excellence, leadership potential, and a strong interest in Korean culture.' },
+            { name: 'KAIST International Student Scholarship', country: 'South Korea', focus: ['Merit-Based'], coverage: 'Full Ride', shortSummary: 'Comprehensive scholarship covering tuition, living expenses, and medical insurance at KAIST.', longDescription: 'KAIST (Korea Advanced Institute of Science and Technology) offers comprehensive scholarships to international students pursuing undergraduate degrees. These scholarships cover full tuition fees, a monthly stipend for living expenses, and medical insurance. Admission is highly competitive, focusing on academic rigor in STEM fields and research potential.' },
+            { name: 'Lee Kong Chian Scholars\' Programme (SMU)', country: 'Singapore', focus: ['Merit-Based', 'Leadership'], coverage: 'Full Ride', shortSummary: 'Prestigious award covering tuition, grants, and sponsorship for international programs.', longDescription: 'The Lee Kong Chian Scholars\' Programme at Singapore Management University (SMU) is a prestigious award for top-tier international students. It covers full tuition fees, provides a living allowance, and offers grants for overseas exchange programs. Selection emphasizes outstanding academic results, strong leadership qualities, and active participation in co-curricular activities.' },
+            { name: 'ASEAN Undergraduate Scholarship (SMU)', country: 'Singapore', focus: ['Development-Focused'], coverage: 'Full Ride', shortSummary: 'For citizens of ASEAN countries, covers tuition and allowances but requires a 3-year work bond in Singapore.', longDescription: 'The ASEAN Undergraduate Scholarship at Singapore Management University (SMU) is for citizens of ASEAN member countries. It covers full tuition fees and provides a living allowance. A key condition is a 3-year bond to work in Singapore after graduation. Applicants should demonstrate academic excellence and a commitment to contributing to the region.' },
+            { name: 'UCD Global Excellence Scholarships', country: 'Ireland', focus: ['Merit-Based'], coverage: 'Full Tuition', shortSummary: 'Covers 100% or 50% of tuition fees for international students at University College Dublin.', longDescription: 'University College Dublin (UCD) offers Global Excellence Scholarships to attract high-achieving international students. These scholarships cover either 100% or 50% of tuition fees. Selection is based on academic merit and the potential to contribute to the UCD community.' },
+            { name: 'Chalhoub Scholarship', country: 'France', focus: ['Development-Focused'], coverage: 'Full Ride', shortSummary: 'For students from specific Middle Eastern countries studying at Sciences Po, covering tuition and living costs.', longDescription: 'The Chalhoub Scholarship is designed for talented students from specific Middle Eastern countries (e.g., Lebanon, Jordan, UAE) who wish to pursue their undergraduate studies at Sciences Po in France. It is a full-ride scholarship covering tuition fees and living costs. Applicants should demonstrate academic excellence and a commitment to their home region\'s development.' },
+            { name: 'Manaaki New Zealand Scholarships', country: 'New Zealand', focus: ['Development-Focused'], coverage: 'Full Ride', shortSummary: 'Full scholarships for students from selected developing countries to contribute to home country development.', longDescription: 'Manaaki New Zealand Scholarships are offered by the New Zealand Government to students from eligible developing countries. These are full tertiary scholarships for undergraduate and postgraduate academic study in New Zealand and enhance their skills to contribute to the sustainable development of their home country.' }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const countryFiltersContainer = document.getElementById('country-filters');
+            const focusFiltersContainer = document.getElementById('focus-filters');
+            const coverageFiltersContainer = document.getElementById('coverage-filters');
+            const scholarshipGrid = document.getElementById('scholarship-grid');
+            const noResults = document.getElementById('no-results');
+            const resultsCount = document.getElementById('results-count');
+            const resetBtn = document.getElementById('reset-filters');
+            
+            const tipsModal = document.getElementById('tips-modal');
+            const closeModalBtn = document.getElementById('close-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalSpinner = document.getElementById('modal-spinner');
+            const modalTipsContent = document.getElementById('modal-tips-content');
+            const modalError = document.getElementById('modal-error');
+
+            const essayIdeaInput = document.getElementById('essay-idea-input');
+            const generateEssayIdeasBtn = document.getElementById('generate-essay-ideas-btn');
+            const essayIdeasSpinner = document.getElementById('essay-ideas-spinner');
+            const essayIdeasContent = document.getElementById('essay-ideas-content');
+            const essayIdeasError = document.getElementById('essay-ideas-error');
+
+            const personalStatementInput = document.getElementById('personal-statement-input');
+            const getStatementFeedbackBtn = document.getElementById('get-statement-feedback-btn');
+            const statementFeedbackSpinner = document.getElementById('statement-feedback-spinner');
+            const statementFeedbackContent = document.getElementById('statement-feedback-content');
+            const statementFeedbackError = document.getElementById('statement-feedback-error');
+
+            const studyMentorInput = document.getElementById('study-mentor-input');
+            const askStudyMentorBtn = document.getElementById('ask-study-mentor-btn');
+            const studyMentorChatHistory = document.getElementById('study-mentor-chat-history');
+            const studyMentorSpinner = document.getElementById('study-mentor-spinner');
+            const studyMentorError = document.getElementById('study-mentor-error');
+            const startNewConversationBtn = document.getElementById('start-new-conversation-btn'); // New button
+
+            let activeFilters = {
+                country: null,
+                focus: null,
+                coverage: null
+            };
+
+            let currentScholarshipForTips = null;
+            let studyMentorConversationHistory = []; // Stores conversation history for the study mentor
+
+            const uniqueCountries = [...new Set(scholarships.map(s => s.country))].sort();
+            const uniqueFocuses = [...new Set(scholarships.flatMap(s => s.focus))].sort();
+            const uniqueCoverages = [...new Set(scholarships.map(s => s.coverage))].sort((a,b) => b.localeCompare(a));
+
+            function createFilterButtons(container, items, category) {
+                items.forEach(item => {
+                    const button = document.createElement('button');
+                    button.className = 'filter-btn text-sm py-1 px-3 rounded-full border border-slate-300 bg-white';
+                    button.textContent = item;
+                    button.dataset.filter = item;
+                    button.dataset.category = category;
+                    container.appendChild(button);
+                });
+            }
+
+            async function generateApplicationTips(scholarshipName, country, focus, description) {
+                modalSpinner.classList.remove('hidden');
+                modalTipsContent.innerHTML = '';
+                modalError.classList.add('hidden');
+
+                const prompt = `Provide concise application tips for the '${scholarshipName}' scholarship in ${country}. This scholarship primarily focuses on ${focus.join(', ')}. Here is a brief description: "${description}". Keep the tips actionable and relevant to these criteria. Focus on what an applicant should emphasize in their application.`;
+                
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "AIzaSyB7uVdxWQP0siGdyHxBVPhEDI6nPHQ2fp4"; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        modalTipsContent.innerHTML = text.replace(/\n/g, '<br>');
+                    } else {
+                        modalError.classList.remove('hidden');
+                        modalTipsContent.innerHTML = '<p>No tips could be generated. The AI response was empty or malformed.</p>';
+                    }
+                } catch (error) {
+                    modalError.classList.remove('hidden');
+                    modalTipsContent.innerHTML = `<p>Error generating tips: ${error.message}.</p>`;
+                } finally {
+                    modalSpinner.classList.add('hidden');
+                }
+            }
+
+            async function generateEssayIdeas(scholarshipName, country, focus, userIdea) {
+                essayIdeasSpinner.classList.remove('hidden');
+                essayIdeasContent.innerHTML = '';
+                essayIdeasError.classList.add('hidden');
+
+                const prompt = `For the '${scholarshipName}' scholarship in ${country}, which focuses on ${focus.join(', ')}, generate 3-5 essay angles or key points based on the applicant's idea: "${userIdea}". The ideas should be actionable and relevant to the scholarship's focus.`;
+                
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        essayIdeasContent.innerHTML = text.replace(/\n/g, '<br>');
+                    } else {
+                        essayIdeasError.classList.remove('hidden');
+                        essayIdeasContent.innerHTML = '<p>No essay ideas could be generated. The AI response was empty or malformed.</p>';
+                    }
+                } catch (error) {
+                    essayIdeasError.classList.remove('hidden');
+                    essayIdeasContent.innerHTML = `<p>Error generating essay ideas: ${error.message}.</p>`;
+                } finally {
+                    essayIdeasSpinner.classList.add('hidden');
+                }
+            }
+
+            async function generatePersonalStatementFeedback(statement, scholarshipName, country, focus) {
+                statementFeedbackSpinner.classList.remove('hidden');
+                statementFeedbackContent.innerHTML = '';
+                statementFeedbackError.classList.add('hidden');
+
+                if (statement.split(/\s+/).length > 1000) {
+                    statementFeedbackError.classList.remove('hidden');
+                    statementFeedbackError.textContent = 'Personal statement is too long. Please limit to 1000 words.';
+                    statementFeedbackSpinner.classList.add('hidden');
+                    return;
+                }
+
+                const prompt = `Review the following personal statement for the '${scholarshipName}' scholarship in ${country}, which primarily focuses on ${focus.join(', ')}. Provide feedback on:
+                1. Clarity and coherence: Is the message clear and easy to follow?
+                2. Relevance to scholarship focus: Does it effectively connect the applicant's experiences to the scholarship's criteria?
+                3. Strengths: What are the strongest aspects of the statement?
+                4. Areas for improvement: What could be improved to make it more impactful or persuasive?
+                
+                Personal Statement:
+                "${statement}"`;
+                
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        statementFeedbackContent.innerHTML = text.replace(/\n/g, '<br>');
+                    } else {
+                        statementFeedbackError.classList.remove('hidden');
+                        statementFeedbackContent.innerHTML = '<p>No feedback could be generated. The AI response was empty or malformed.</p>';
+                    }
+                } catch (error) {
+                    statementFeedbackError.classList.remove('hidden');
+                    statementFeedbackContent.innerHTML = `<p>Error generating feedback: ${error.message}.</p>`;
+                } finally {
+                    statementFeedbackSpinner.classList.add('hidden');
+                }
+            }
+
+            async function askStudyMentor(userQuery) {
+                studyMentorSpinner.classList.remove('hidden');
+                studyMentorError.classList.add('hidden');
+
+                // Add user message to history and display
+                studyMentorConversationHistory.push({ role: "user", parts: [{ text: userQuery }] });
+                const userMessageDiv = document.createElement('div');
+                userMessageDiv.className = 'chat-message user text-sm';
+                userMessageDiv.textContent = userQuery;
+                studyMentorChatHistory.appendChild(userMessageDiv);
+                studyMentorChatHistory.scrollTop = studyMentorChatHistory.scrollHeight;
+
+                const payload = { contents: studyMentorConversationHistory }; // Send full history
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const aiResponseText = result.candidates[0].content.parts[0].text;
+                        studyMentorConversationHistory.push({ role: "model", parts: [{ text: aiResponseText }] }); // Add AI response to history
+                        const aiMessageDiv = document.createElement('div');
+                        aiMessageDiv.className = 'chat-message ai text-sm';
+                        aiMessageDiv.innerHTML = aiResponseText.replace(/\n/g, '<br>');
+                        studyMentorChatHistory.appendChild(aiMessageDiv);
+                    } else {
+                        studyMentorError.classList.remove('hidden');
+                        const aiMessageDiv = document.createElement('div');
+                        aiMessageDiv.className = 'chat-message ai text-sm text-red-500';
+                        aiMessageDiv.textContent = 'Sorry, I could not generate a response.';
+                        studyMentorChatHistory.appendChild(aiMessageDiv);
+                        studyMentorConversationHistory.push({ role: "model", parts: [{ text: 'Sorry, I could not generate a response.' }] });
+                    }
+                } catch (error) {
+                    studyMentorError.classList.remove('hidden');
+                    const aiMessageDiv = document.createElement('div');
+                    aiMessageDiv.className = 'chat-message ai text-sm text-red-500';
+                    aiMessageDiv.textContent = `Error: ${error.message}`;
+                    studyMentorChatHistory.appendChild(aiMessageDiv);
+                    studyMentorConversationHistory.push({ role: "model", parts: [{ text: `Error: ${error.message}` }] });
+                } finally {
+                    studyMentorSpinner.classList.add('hidden');
+                    studyMentorChatHistory.scrollTop = studyMentorChatHistory.scrollHeight;
+                }
+            }
+
+
+            function renderScholarships(filteredScholarships) {
+                scholarshipGrid.innerHTML = '';
+                if (filteredScholarships.length === 0) {
+                    noResults.classList.remove('hidden');
+                } else {
+                     noResults.classList.add('hidden');
+                }
+                
+                resultsCount.textContent = `${filteredScholarships.length} result(s) found`;
+
+                filteredScholarships.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'scholarship-card bg-white p-4 rounded-lg flex flex-col';
+                    
+                    const tagsHTML = s.focus.map(f => `<span class="text-xs bg-sky-100 text-sky-800 py-0.5 px-2 rounded-full">${f}</span>`).join(' ');
+
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-slate-800 pr-2">${s.name}</h4>
+                                <span class="text-xs font-semibold ${s.coverage === 'Full Ride' ? 'text-green-600 bg-green-100' : 'text-amber-600 bg-amber-100'} py-0.5 px-2 rounded-full whitespace-nowrap">${s.coverage}</span>
+                            </div>
+                            <p class="text-sm text-slate-600 mb-3">${s.shortSummary}</p>
+                        </div>
+                        <div class="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center">
+                            <span class="text-sm font-semibold text-slate-500">${s.country}</span>
+                            <div class="flex flex-wrap gap-1 justify-end">
+                                ${tagsHTML}
+                            </div>
+                        </div>
+                        <button class="mt-4 w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 transition text-sm get-tips-btn" 
+                                data-name="${s.name}" 
+                                data-country="${s.country}" 
+                                data-focus="${s.focus.join(',')}"
+                                data-description="${s.longDescription}">
+                            ✨ Get Application Tips
+                        </button>
+                    `;
+                    scholarshipGrid.appendChild(card);
+                });
+
+                document.querySelectorAll('.get-tips-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const name = e.target.dataset.name;
+                        const country = e.target.dataset.country;
+                        const focus = e.target.dataset.focus.split(',');
+                        const description = e.target.dataset.description;
+                        
+                        currentScholarshipForTips = { name, country, focus, description };
+
+                        modalTitle.textContent = `Application Tips for ${name}`;
+                        tipsModal.classList.add('open');
+                        generateApplicationTips(name, country, focus, description);
+                        essayIdeaInput.value = ''; // Clear previous input
+                        essayIdeasContent.innerHTML = ''; // Clear previous ideas
+                        essayIdeasError.classList.add('hidden'); // Hide error
+                        personalStatementInput.value = ''; // Clear previous input
+                        statementFeedbackContent.innerHTML = ''; // Clear previous feedback
+                        statementFeedbackError.classList.add('hidden'); // Hide error
+                    });
+                });
+            }
+
+            function applyFilters() {
+                let filtered = scholarships;
+
+                if (activeFilters.country) {
+                    filtered = filtered.filter(s => s.country === activeFilters.country);
+                }
+                if (activeFilters.focus) {
+                    filtered = filtered.filter(s => s.focus.includes(activeFilters.focus));
+                }
+                if (activeFilters.coverage) {
+                    filtered = filtered.filter(s => s.coverage === activeFilters.coverage);
+                }
+
+                renderScholarships(filtered);
+            }
+
+            function handleFilterClick(e) {
+                const target = e.target;
+                if (!target.classList.contains('filter-btn')) return;
+
+                const filter = target.dataset.filter;
+                const category = target.dataset.category;
+
+                const container = target.parentElement;
+                container.querySelectorAll('.filter-btn').forEach(btn => {
+                    if (btn !== target) {
+                        btn.classList.remove('active');
+                    }
+                });
+                
+                target.classList.toggle('active');
+
+                if (target.classList.contains('active')) {
+                    activeFilters[category] = filter;
+                } else {
+                    activeFilters[category] = null;
+                }
+                
+                applyFilters();
+            }
+
+            resetBtn.addEventListener('click', () => {
+                activeFilters = { country: null, focus: null, coverage: null };
+                document.querySelectorAll('.filter-btn.active').forEach(btn => btn.classList.remove('active'));
+                applyFilters();
+            });
+
+            createFilterButtons(countryFiltersContainer, uniqueCountries, 'country');
+            createFilterButtons(focusFiltersContainer, uniqueFocuses, 'focus');
+            createFilterButtons(coverageFiltersContainer, uniqueCoverages, 'coverage');
+
+            [countryFiltersContainer, focusFiltersContainer, coverageFiltersContainer].forEach(container => {
+                container.addEventListener('click', handleFilterClick);
+            });
+
+            closeModalBtn.addEventListener('click', () => {
+                tipsModal.classList.remove('open');
+            });
+
+            tipsModal.addEventListener('click', (e) => {
+                if (e.target === tipsModal) {
+                    tipsModal.classList.remove('open');
+                }
+            });
+
+            generateEssayIdeasBtn.addEventListener('click', () => {
+                const userIdea = essayIdeaInput.value.trim();
+                if (userIdea && currentScholarshipForTips) {
+                    generateEssayIdeas(
+                        currentScholarshipForTips.name,
+                        currentScholarshipForTips.country,
+                        currentScholarshipForTips.focus,
+                        userIdea
+                    );
+                } else if (!userIdea) {
+                    essayIdeasError.classList.remove('hidden');
+                    essayIdeasError.textContent = 'Please enter an idea to brainstorm.';
+                }
+            });
+
+            getStatementFeedbackBtn.addEventListener('click', () => {
+                const personalStatement = personalStatementInput.value.trim();
+                if (personalStatement && currentScholarshipForTips) {
+                    generatePersonalStatementFeedback(
+                        personalStatement,
+                        currentScholarshipForTips.name,
+                        currentScholarshipForTips.country,
+                        currentScholarshipForTips.focus
+                    );
+                } else if (!personalStatement) {
+                    statementFeedbackError.classList.remove('hidden');
+                    statementFeedbackError.textContent = 'Please paste your personal statement to get feedback.';
+                }
+            });
+
+            askStudyMentorBtn.addEventListener('click', () => {
+                const userQuery = studyMentorInput.value.trim();
+                if (userQuery) {
+                    askStudyMentor(userQuery);
+                    studyMentorInput.value = ''; // Clear input after sending
+                } else {
+                    studyMentorError.classList.remove('hidden');
+                    studyMentorError.textContent = 'Please enter a question for the mentor.';
+                }
+            });
+
+            studyMentorInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault(); // Prevent new line
+                    askStudyMentorBtn.click(); // Trigger button click
+                }
+            });
+
+            // New: Start New Conversation button functionality
+            startNewConversationBtn.addEventListener('click', () => {
+                studyMentorConversationHistory = []; // Clear history
+                studyMentorChatHistory.innerHTML = ''; // Clear chat display
+                studyMentorInput.value = ''; // Clear input
+                studyMentorError.classList.add('hidden'); // Hide any errors
+                // Optionally, add an initial greeting from the AI mentor
+                const initialGreeting = "Hi there! I'm your AI Study Mentor. How can I help you with your studies today?";
+                const aiMessageDiv = document.createElement('div');
+                aiMessageDiv.className = 'chat-message ai text-sm';
+                aiMessageDiv.textContent = initialGreeting;
+                studyMentorChatHistory.appendChild(aiMessageDiv);
+                studyMentorConversationHistory.push({ role: "model", parts: [{ text: initialGreeting }] });
+                studyMentorChatHistory.scrollTop = studyMentorChatHistory.scrollHeight;
+            });
+
+
+            function renderFocusChart() {
+                const focusCounts = scholarships.flatMap(s => s.focus).reduce((acc, focus) => {
+                    acc[focus] = (acc[focus] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const ctx = document.getElementById('focus-chart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(focusCounts),
+                        datasets: [{
+                            data: Object.values(focusCounts),
+                            backgroundColor: ['#0284c7', '#38bdf8', '#7dd3fc', '#a5f3fc', '#f0abfc', '#e879f9', '#d946ef'],
+                            borderColor: '#f8fafc',
+                            borderWidth: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    padding: 20
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            renderScholarships(scholarships);
+            renderFocusChart();
+        });
+
+    </script>
+</body>
+</html>
